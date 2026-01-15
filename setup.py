@@ -1,0 +1,31 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="gordian",
+    version="0.1.0",
+    description="Tools for performing bulge-disc decompositions of IFU cubes",
+    author="Jonah Powley",
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
+    install_requires=[
+        "arviz",
+        "asdf",
+        "astropy",
+        "corner",
+        "jax",
+        "jaxopt",
+        "matplotlib",
+        "numpy",
+        "numpyro",
+        "pandas",
+        "photutils",
+        "sep",
+        "scipy",
+        "tqdm",
+        "equinox",
+        "interpax",
+        "pysersic",
+        "astro-sedpy",
+    ],
+    python_requires=">=3.11",
+)
