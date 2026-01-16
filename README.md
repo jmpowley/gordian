@@ -1,2 +1,2 @@
 # Gordian
-A Python module to perform spectroscopic decompositions of galaxy morphology
+A Python module for disentangling multi-component galaxy morphology and spectroscopy using combined photometric and IFU data.
