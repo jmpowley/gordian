@@ -87,7 +87,7 @@ def _normalise(data):
 
 def load_band_data(band_config: BandConfig):
     """
-    Load NIRCam cutout data for a single band.
+    Load cutout data for a single band.
     
     Parameters
     ----------
