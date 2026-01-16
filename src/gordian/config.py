@@ -40,7 +40,7 @@ class CubeConfig:
 
 
 @dataclass
-class PriorConfig:
+class ModelConfig:
     """Prior configuration for model parameters."""
     profile_type: str
     sky_type: str
@@ -58,7 +58,6 @@ class FitConfig:
     use_cube_wave: bool
     invert_wave: bool
     seed: int
-    verbose: bool
     linked_params: List[str]
     const_params: List[str]
 
@@ -77,8 +76,8 @@ class GordianConfig:
     io_config: IOConfig
     band_config: Dict[str, BandConfig]
     cube_config: Optional[CubeConfig]
-    prior_config: PriorConfig
-    fit_config: FitConfig
+    model_config: ModelConfig
+    fit_config: ModelConfig
 
 
 def load_config_from_dict(config_dict: dict) -> GordianConfig:
@@ -110,15 +109,15 @@ def load_config_from_dict(config_dict: dict) -> GordianConfig:
         cube_config = CubeConfig(**config_dict["cube_config"])
     
     # Build prior config
-    prior_config = PriorConfig(**config_dict["prior_config"])
+    model_config = ModelConfig(**config_dict["model_config"])
     
     # Build fit config
-    fit_config = FitConfig(**config_dict["fit_config"])
+    fit_config = ModelConfig(**config_dict["fit_config"])
     
     return GordianConfig(
         io_config=io,
         band_config=band_config,
         cube_config=cube_config,
-        prior_config=prior_config,
+        model_config=model_config,
         fit_config=fit_config
     )
