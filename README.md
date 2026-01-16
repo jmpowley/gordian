@@ -1,2 +1,2 @@
 # Gordian
-A Python module to perform a bulge-disc decomposition of integral field unit spectroscopy observations of a galaxy.
+A Python module for disentangling multi-component galaxy morphology and spectroscopy using combined photometric and IFU data.
