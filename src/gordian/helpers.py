@@ -7,10 +7,13 @@ from sedpy.observate import load_filters
 from pysersic.rendering import HybridRenderer
 
 from .loading import load_cube_data
-from .config import BandConfig, CubeConfig
+from .config import BandConfig, CubeConfig, ModelConfig, FitConfig, IOConfig
 
+# ------------------------------------
+# Return variables from configurations
+# ------------------------------------
 def return_filters(band_config):
-    """Returns filters fit by pipeline"""
+    """Returns filters fit by Gordian."""
 
     filters = []
     for filter_kwargs in band_config.values():
@@ -19,8 +22,9 @@ def return_filters(band_config):
 
     return filters
 
+
 def return_wv_to_save(band_config, cube_config, fit_config):
-    """Returns the wavelength vector used to produce a PySersic multi-band fit"""
+    """Returns the wavelength passed to PySersic multi-band fit."""
 
     # Use cube wavelength range
     if fit_config.use_cube_wave:
@@ -42,7 +46,12 @@ def return_wv_to_save(band_config, cube_config, fit_config):
 
     return wv_to_save
 
+
+# ---------------------
+# Return fit parameters
+# ---------------------
 def return_linked_param_at_wv(results_dict, param, mode, return_std : bool):
+    """Returns a linked parameter value from the simultaneous fit results dictionary at each wavelength."""
 
     # Load median, standard deviation and MAP
     med_at_wv, std_at_wv = results_dict["summary"][f"{param}_at_wv"]
@@ -60,128 +69,138 @@ def return_linked_param_at_wv(results_dict, param, mode, return_std : bool):
         else:
             return map_at_wv
     
+
 def return_linked_param_at_filter(results_dict, param, filter, mode, return_std : bool):
+    """Returns a linked parameter value from the simultaneous fit results dictionary for a given filter."""
 
     # Load median, standard deviation and MAP
     med_at_filter, std_at_filter = results_dict["summary"][f"{param}_{filter}"]
     map_at_filter = results_dict["map"][f"{param}_{filter}"]
 
-    print("filter:", filter)
-    print(f"{param} MAP:", np.asarray(map_at_filter))
-    print(f"{param} median:", np.asarray(med_at_filter))
-    print(f"{param} std:", np.asarray(std_at_filter))
-
-    print(results_dict["map"])
-
-    # return median or MAP, optionally with standard deviation
+    # Return median
     if mode == "median":
         if return_std:
             return med_at_filter, std_at_filter
         else:
             return med_at_filter
+    
+    # Return MAP
     elif mode == "MAP":
         if return_std:
             return map_at_filter, std_at_filter
         else:
             return map_at_filter
+    
     else:
-        raise Exception(f"Error: 'mode' argument {mode} not valid")
+        raise Exception(f"Invalid mode, got {mode}")
+
 
 def return_const_param(results_dict, param, mode, return_std : bool):
+    """Returns a constant parameter value from the simultaneous fit results dictionary."""
 
     # Load median and standard deviation
     med, std = results_dict["summary"][f'{param}']
     map = results_dict["map"][f"{param}"]
 
-    print("param:", param)
-    print("MAP;", map)
-    print("median:", med)
-
-    # return median or MAP, optionally with standard deviation
+    # Return median
     if mode == "median":
         if return_std:
             return med, std
         else:
             return med
+        
+    # Return MAP
     elif mode == "MAP":
         if return_std:
             return map, std
         else:
             return map
-    else:
-        raise Exception(f"Error: 'mode' argument {mode} not valid")
     
-def return_individual_fit_posteriors(tree, params, return_medians : bool, return_uncs : bool):
-
-    posterior = tree['posterior']
-    param_posts = {}
-    param_meds = []
-    param_uncs = []
-
-    # Wrap single params in list
-    if type(params) != list:
-        params = [params]
-
-    for p in params:
-        param_post = posterior[p][1]  # use second output...
-        param_med = np.nanpercentile(param_post, q=50)
-        param_16 = np.nanpercentile(param_post, q=16)
-        param_84 = np.nanpercentile(param_post, q=84)
-
-        param_posts[p] = param_post
-        param_meds.append(param_med)
-        param_uncs.append([param_med-param_16, param_84-param_med])
-
-    # Optionally return image and residual
-    if return_medians:
-        if return_uncs:
-            return param_posts, param_meds, param_uncs
-        else:
-            return param_posts, param_meds
     else:
-        if return_uncs:
-            return param_posts, param_uncs
+        raise Exception(f"Invalid mode, got {mode}")
+
+# ----------------------------
+# Return fit params from trees
+# ----------------------------
+
+def return_individual_fit_param(individual_tree, param, mode: str, return_unc: bool):
+    """Returns a parameter from the individual fit posterior distribution."""
+
+    # NOTE: To be consistent with return_*_param* functions, return median and standard deviation
+    # In future, consider return quantiles of posterior distribution instead
+
+    # Extract parameter posterior
+    posterior = individual_tree['posterior']
+    param_post = posterior[param][1]  # use second run
+
+    # Calculate value and uncertainties
+    param_med = np.nanmedian(param_post)
+    param_mean = np.nanmean(param_post)
+    param_std = np.nanstd(param_post)
+    param_16 = np.nanpercentile(param_post, q=16)
+    param_84 = np.nanpercentile(param_post, q=84)
+
+    # Return median
+    if mode == "median":
+        if return_unc:
+            return param_med, param_std
         else:
-            return param_posts
+            return param_med
+
+    # Return mean
+    elif mode == "mean":
+        if return_unc:
+            return param_mean, param_std
+        else:
+            return param_mean
         
-def return_simultaneous_fit_params_at_filter(simultaneous_tree, params, filter, mode, return_list : bool, return_unc : bool = False):
-
-    # Load variables from tree
-    sim_results_dict = simultaneous_tree["results_dict"]
-    fit_config = simultaneous_tree["fit_config"]
-    linked_params = fit_config["linked_params"]
-    const_params = fit_config["const_params"]
-
-    # Wrap single params in list
-    if type(params) != list:
-        params = [params]
-
-    # Load parameter medians/MAPs from results dict
-    params_at_filters = {}
-    param_uncs_at_filters = {}
-    for param in params:
-        if param in const_params:
-            param, param_unc = return_const_param(sim_results_dict, param=param, mode=mode, return_std=True)
-        elif param in linked_params:
-            param, param_unc = return_linked_param_at_filter(sim_results_dict, param=param, filter=filter, mode=mode, return_std=True)
-        else:
-            raise Exception(f"Parameter {param} not in list {linked_params + const_params}")
-        params_at_filters[param] = param
-        param_uncs_at_filters[param] = param_unc
-
-    # Optionally return uncertainty as well or convert return to lists
-    if return_unc:
-        if return_list:
-            return list(params_at_filters.values()), list(param_uncs_at_filters.values())
-        else:
-            return params_at_filters, param_uncs_at_filters
     else:
-        if return_list:
-            return list(params_at_filters.values())
-        else:
-            return params_at_filters
-    
-def return_median_model_from_individual_tree(tree, profile_type, use_image_flux, return_residual : bool, residual_type : str = "standard"):
+        raise Exception(f"Invalid mode, got {mode}")
+
+# def return_simultaneous_fit_params_at_filter(simultaneous_tree, params, filter, mode, return_list: bool, return_unc: bool = False):
+#     """Returns values of all parameters from a simultaneous fit for a given filter"""
+
+#     # Load variables from tree
+#     sim_results_dict = simultaneous_tree["results_dict"]
+
+#     fit_config = FitConfig(**simultaneous_tree["fit_config"])
+#     linked_params = fit_config.linked_params
+#     const_params = fit_config.const_params
+
+#     # Wrap single params in list
+#     if type(params) != list:
+#         params = [params]
+
+#     # Load parameter medians/MAPs from results dict
+#     params_at_filter = {}
+#     param_uncs_at_filter = {}
+#     for param in params:
+#         if param in const_params:
+#             param, param_unc = return_const_param(sim_results_dict, param=param, mode=mode, return_std=True)
+#         elif param in linked_params:
+#             param, param_unc = return_linked_param_at_filter(sim_results_dict, param=param, filter=filter, mode=mode, return_std=True)
+#         else:
+#             raise Exception(f"Parameter {param} not in list {linked_params + const_params}")
+#         params_at_filter[param] = param
+#         param_uncs_at_filter[param] = param_unc
+
+#     # Optionally return uncertainty as well or convert return to lists
+#     if return_unc:
+#         if return_list:
+#             return list(params_at_filter.values()), list(param_uncs_at_filter.values())
+#         else:
+#             return params_at_filter, param_uncs_at_filter
+#     else:
+#         if return_list:
+#             return list(params_at_filter.values())
+#         else:
+#             return params_at_filter
+        
+
+# ------------------------
+# Return models from trees
+# ------------------------
+def return_model_from_individual_tree(tree, model_config: ModelConfig, mode: str, use_image_flux: bool = True):
 
     # Load data
     input_data = tree["input_data"]
@@ -190,162 +209,123 @@ def return_median_model_from_individual_tree(tree, profile_type, use_image_flux,
     rms = np.asarray(input_data["rms"])
     psf = np.asarray(input_data["psf"]).astype(np.float32)  # recast as numpy
 
-    # Calculate medians from posterior samples
+    # Load posterior samples
     posterior = tree["posterior"]
-    param_medians = {key : np.nanmedian(val) for key, val in posterior.items()}
+
+    # Use mean
+    if mode == "mean":
+        param_values = {key : np.nanmean(val) for key, val in posterior.items()}
+
+    # Use median
+    elif mode == "median":
+        param_values = {key : np.nanmedian(val) for key, val in posterior.items()}
 
     # Create theta vector
-    theta = param_medians.copy()
-    # -- add flux
+    theta = param_values.copy()
+    
+    # Add flux
     if use_image_flux:
         flux = np.nansum(image[mask])  # apply mask
         theta["flux"] = flux
 
     # Render model
     renderer = HybridRenderer(im_shape=image.shape, pixel_PSF=psf)
-    median_model = np.asarray(renderer.render_source(params=theta, profile_type=profile_type))
+    model = np.asarray(renderer.render_source(params=theta, profile_type=model_config.profile_type))
 
-    # Create residual
-    # -- standard
-    if residual_type == "standard":
-        residual = image - median_model
-    elif residual_type == "normalised":
-        residual = (image - median_model) / rms
-    elif residual_type == "relative_data":
-        residual = (image - median_model) / image
-    elif residual_type == "relative_model":
-        residual = (image - median_model) / median_model
-    else:
-        raise ValueError(f"Residual type {residual_type} is not a valid.")
+    return model
 
-    # Optionally return residual
-    if return_residual:
-        return median_model, residual
-    else:
-        return median_model
-    
-def return_mean_model_from_individual_tree(tree, profile_type, use_image_flux, return_residual : bool):
+def return_model_from_simultaneous_tree(simultaneous_tree, individual_tree, filter: str, mode: str, use_image_flux: bool = True):
+    """Return the model of a specified type (mean or median) from a simultaneous fit."""
 
-    # Load data
-    input_data = tree["input_data"]
-    image = np.asarray(input_data["image"])
-    mask = np.asarray(input_data["mask"])
-    psf = np.asarray(input_data["psf"]).astype(np.float32)  # recast as numpy
-
-    # Calculate medians from posterior samples
-    posterior = tree["posterior"]
-    param_means = {key : np.nanmean(val) for key, val in posterior.items()}
-
-    # Create theta vector
-    theta = param_means.copy()
-    # -- add flux
-    if use_image_flux:
-        flux = np.nansum(image[mask])  # apply mask
-        theta["flux"] = flux
-
-    # Render model and residual
-    renderer = HybridRenderer(im_shape=image.shape, pixel_PSF=psf)
-    mean_model = np.asarray(renderer.render_source(params=theta, profile_type=profile_type))
-    residual = image - mean_model
-
-    # Optionally return residual
-    if return_residual:
-        return mean_model, residual
-    else:
-        return mean_model
-
-def return_median_model_from_simultaneous_tree(simultaneous_tree, individual_tree, profile_type, filter, use_image_flux, return_residual : bool, residual_type : str = "standard"):
-
-    # Load data
-    input_data = individual_tree["input_data"]
-    image = np.asarray(input_data["image"])
-    mask = np.asarray(input_data["mask"])
-    rms = np.asarray(input_data["rms"])
-    psf = np.asarray(input_data["psf"]).astype(np.float32)  # recast as numpy
-
-    # Extract joint fit variables
+    # Extract simultaneous fit variables
     sim_results_dict = simultaneous_tree["results_dict"]
-    fit_config = simultaneous_tree["fit_config"]
-    linked_params = fit_config["linked_params"]
+    fit_config = FitConfig(**simultaneous_tree["fit_config"])
+    model_config = ModelConfig(**simultaneous_tree["model_config"])
+
+    # Load parameters
+    linked_params = fit_config.linked_params
     const_params = fit_config["const_params"]
     all_params = linked_params + const_params
 
-    # Load parameter medians from joint fits
-    param_medians = {}
+    # Load data from individual tree
+    input_data = individual_tree["input_data"]
+    image = np.asarray(input_data["image"])
+    mask = np.asarray(input_data["mask"])
+    rms = np.asarray(input_data["rms"])
+    psf = np.asarray(input_data["psf"]).astype(np.float32)  # recast as numpy
+
+    # Load parameter values from joint fits
+    param_values = {}
     for param in all_params:
         if param in const_params:
-            param_median = return_const_param(sim_results_dict, param=param, mode="median", return_std=False)
+            param_value = return_const_param(sim_results_dict, param=param, mode=mode, return_std=False)
         if param in linked_params:
-            param_median = return_linked_param_at_filter(sim_results_dict, param=param, filter=filter, mode="median", return_std=False)
-        param_medians[param] = param_median
+            param_value = return_linked_param_at_filter(sim_results_dict, param=param, filter=filter, mode=mode, return_std=False)
+        param_values[param] = param_value
 
     # Create theta vector
-    theta = param_medians.copy()
-    # -- add flux
+    theta = param_values.copy()
+    
+    # Add flux
     if use_image_flux:
         flux = np.nansum(image[mask])  # apply mask
         theta["flux"] = flux
 
     # Render model
     renderer = HybridRenderer(im_shape=image.shape, pixel_PSF=psf)
-    median_model = np.asarray(renderer.render_source(params=theta, profile_type=profile_type))
+    model = np.asarray(renderer.render_source(params=theta, profile_type=model_config.profile_type))
 
-    # Create residual
-    # -- standard
-    if residual_type == "standard":
-        residual = image - median_model
-    elif residual_type == "normalised":
-        residual = (image - median_model) / rms
-    elif residual_type == "relative_data":
-        residual = (image - median_model) / image
-    elif residual_type == "relative_model":
-        residual = (image - median_model) / median_model
-    else:
-        raise ValueError(f"Residual type {residual_type} is not a valid.")
+    return model
 
-    # Optionally return residual
-    if return_residual:
-        return median_model, residual
-    else:
-        return median_model
+def return_MAP_model_from_simultaneous_tree(simultaneous_tree, filter: str):
+    """Return the MAP model from a simultaneous fit.
     
-def return_MAP_model_from_simultaneous_tree(simultaneous_tree, individual_tree, filter, return_residual : bool, residual_type : str = "standard"):
-
-    # Load data
-    input_data = individual_tree["input_data"]
-    image = np.asarray(input_data["image"])
-    mask = np.asarray(input_data["mask"])
-    rms = np.asarray(input_data["rms"])
-    psf = np.asarray(input_data["psf"]).astype(np.float32)  # recast as numpy
+    Note: MAP returned from fitter differently to median/mean model, so call is different
+    """
 
     # Extract joint fit variables
     sim_results_dict = simultaneous_tree["results_dict"]
     filters = simultaneous_tree["filters"]
     sim_map_dict = sim_results_dict["map"]
 
-    # Load model
+    # Load model from dict
     filter_idx = filters.index(filter)
     map_model = sim_map_dict["model"][filter_idx]
     
-    # Create residual
-    # -- standard
+    return map_model
+
+
+def return_model_residual(image: np.ndarray, model: np.ndarray, rms: np.ndarray = None, residual_type: str = "standard"):
+    """Returns the residual from input data and model.
+    
+    Different kinds of residual available to specify.
+    """
+
+    # Standard residual
     if residual_type == "standard":
-        residual = image - map_model
+        residual = image - model
+
+    # Error-normalised residual
     elif residual_type == "normalised":
-        residual = (image - map_model) / rms
+        residual = (image - model) / rms
+
+    # Residual compared to image
     elif residual_type == "relative_data":
-        residual = (image - map_model) / image
+        residual = (image - model) / image
+
+    # Residual compared to model
     elif residual_type == "relative_model":
-        residual = (image - map_model) / map_model
+        residual = (image - model) / model
+    
     else:
-        raise ValueError(f"Residual type {residual_type} is not a valid.")
+        raise ValueError(f"Invalid residual_type, got {residual_type}")
+    
+    return residual
 
-    # Optionally return residual
-    if return_residual:
-        return map_model, residual
-    else:
-        return map_model
 
+# ------------------------------------------------
+# Return estimators from fitter objects/posteriors
+# ------------------------------------------------
 def return_MAP_from_fitter(fitter, rkey):
 
     # Find MAP
@@ -357,7 +337,8 @@ def return_MAP_from_fitter(fitter, rkey):
 
     return map
 
-def return_summary_from_estimation(fitter, rkey, method):
+
+def return_summary_from_fitter(fitter, rkey, method):
 
     rkey, rkey_est = jax.random.split(rkey, 2)
     # -- MCMC sampling
