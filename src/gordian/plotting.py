@@ -8,6 +8,9 @@ from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
 from pysersic.results import plot_residual, plot_image
 from pysersic.rendering import HybridRenderer
+from corner import corner
+
+from gordian.config import FitConfig
 
 def make_plots(fitter, image, mask, sig, psf, profile_type, method, filter, fig_dir):
 
@@ -107,3 +110,54 @@ def plot_residuals_grid(images, masks, models, residuals, filters : str, scale :
     fig.tight_layout()
 
     return fig
+
+
+def plot_simultaneous_fit_corners(simultaneous_tree):
+    
+    # Load simultaneous tree data
+    filters = simultaneous_tree["filters"]
+    results_dict = simultaneous_tree["results_dict"]
+    fit_config = FitConfig(**simultaneous_tree["fit_config"])
+    
+    # Load parameters
+    method = fit_config.method
+    const_params = fit_config.const_params
+    linked_params = fit_config.linked_params
+
+    # Load chains
+    chain_dict = results_dict["chains"]
+    map_results = results_dict["map"]
+
+    # Extract chains
+    const_param_chains = {}
+    const_param_map = {}
+    # const_titles = []
+    for param in const_params:
+        const_param_chains[param] = chain_dict[param]
+        const_param_map[param] = map_results[param]
+
+    linked_param_chains = {}
+    linked_param_map = {}
+    for param in linked_params:
+        for filter in filters:
+            param_full = f"{param}_{filter}"
+            linked_param_chains[param_full] = chain_dict[param_full]
+            linked_param_map[param_full] = map_results[param_full]
+
+    # Constant parameters
+    fig1 = corner(const_param_chains, 
+             labels=list(const_param_chains.keys()),
+             truths=const_param_map,
+             quantiles=[.16, .5, .84],
+             show_titles=True
+             )
+
+    # linked parameters
+    fig2 = corner(linked_param_chains, 
+                labels=list(linked_param_chains.keys()),
+                truths=linked_param_map,
+                quantiles=[.16, .5, .84],
+                show_titles=True
+                )
+    
+    return fig1, fig2
