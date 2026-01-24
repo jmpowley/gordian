@@ -4,9 +4,8 @@ import astropy.units as u
 from gordian.conversions import (
     convert_wave,
     convert_flux,
-    return_maggie_flux_unit,
-    return_cgs_flux_unit,
-    return_si_flux_unit,
+    CGS_FLUX_UNIT,
+    SI_FLUX_UNIT,
     MAGGIE_UNIT
 )
 
@@ -56,9 +55,9 @@ class TestFluxConversions(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.maggie_unit = return_maggie_flux_unit()
-        self.cgs_unit = return_cgs_flux_unit()
-        self.si_unit = return_si_flux_unit()
+        self.maggie_unit = MAGGIE_UNIT
+        self.cgs_unit = CGS_FLUX_UNIT
+        self.si_unit = SI_FLUX_UNIT
         self.wave_um = np.arange(1, 10)
         self.wave_A = convert_wave(wave_in=self.wave_um, in_unit=u.um, out_unit=u.AA, return_quantity=True)
         self.wave_m = convert_wave(wave_in=self.wave_um, in_unit=u.um, out_unit=u.m, return_quantity=True)
@@ -133,9 +132,9 @@ class TestMagnitudeConversions(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.maggie_unit = return_maggie_flux_unit()
-        self.cgs_unit = return_cgs_flux_unit()
-        self.si_unit = return_si_flux_unit()
+        self.maggie_unit = MAGGIE_UNIT
+        self.cgs_unit = CGS_FLUX_UNIT
+        self.si_unit = SI_FLUX_UNIT
         self.wave_um = np.arange(1, 10)
         self.wave_A = convert_wave(wave_in=self.wave_um, in_unit=u.um, out_unit=u.AA, return_quantity=True)
     
@@ -267,7 +266,7 @@ class TestEdgeCases(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.cgs_unit = return_cgs_flux_unit()
+        self.cgs_unit = CGS_FLUX_UNIT
     
     def test_single_value_conversion(self):
         """Test conversion with single scalar value"""
@@ -321,8 +320,8 @@ class TestConsistency(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.maggie_unit = return_maggie_flux_unit()
-        self.cgs_unit = return_cgs_flux_unit()
+        self.maggie_unit = MAGGIE_UNIT
+        self.cgs_unit = CGS_FLUX_UNIT
         self.wave_A = convert_wave(
             wave_in=np.array([5000.0]), in_unit=u.AA, out_unit=u.AA, return_quantity=True
         )
