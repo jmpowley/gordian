@@ -3,8 +3,6 @@ from typing import Union
 
 from .config import GordianConfig, load_config_from_dict
 from .fitting import fit_bands_independent, fit_bands_simultaneous, fit_cube
-from .writing import save_simultaneous_fit_results, create_directory
-
 
 class Gordian:
     """Base class for the Gordian package."""
