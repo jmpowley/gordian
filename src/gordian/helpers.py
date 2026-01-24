@@ -12,12 +12,12 @@ from .config import BandConfig, CubeConfig, ModelConfig, FitConfig, IOConfig
 # ------------------------------------
 # Return variables from configurations
 # ------------------------------------
-def return_filters(band_config):
+def return_filters(band_config_dict):
     """Returns filters fit by Gordian."""
 
     filters = []
-    for filter_kwargs in band_config.values():
-        filter = filter_kwargs.filter
+    for band_config in band_config_dict.values():
+        filter = band_config.filter
         filters.append(filter)
 
     return filters
@@ -47,9 +47,47 @@ def return_wv_to_save(band_config, cube_config, fit_config):
     return wv_to_save
 
 
+def convert_band_config_dicts(band_config_dicts_in):
+
+    band_config_dicts_out = {}
+
+    for band_key, band_config_dict in band_config_dicts_in.items():
+
+        band_config = BandConfig(**band_config_dict)
+        band_config_dicts_out[band_key] = band_config
+
+    return band_config_dicts_out
+
+
+def return_waveffs_from_simultaneous_tree(tree):
+
+    fit_config = FitConfig(**tree["fit_config"])
+    results_dict = tree["results_dict"]
+
+    waveffs = np.array(results_dict["waveffs"])
+
+    if fit_config.invert_wave:
+        waveffs = 1 / waveffs
+
+    return waveffs
+
+
+def return_wv_to_save_from_simultaneous_tree(tree):
+
+    fit_config = FitConfig(**tree["fit_config"])
+    results_dict = tree["results_dict"]
+
+    wv_to_save = np.array(results_dict["wv_to_save"])
+
+    if fit_config.invert_wave:
+        wv_to_save = 1 / wv_to_save
+
+    return wv_to_save
+
 # ---------------------
 # Return fit parameters
 # ---------------------
+
 def return_linked_param_at_wv(results_dict, param, mode, return_std : bool):
     """Returns a linked parameter value from the simultaneous fit results dictionary at each wavelength."""
 
@@ -196,10 +234,10 @@ def return_individual_fit_param(individual_tree, param, mode: str, return_unc: b
 #         else:
 #             return params_at_filter
         
-
 # ------------------------
 # Return models from trees
 # ------------------------
+
 def return_model_from_individual_tree(tree, model_config: ModelConfig, mode: str, use_image_flux: bool = True):
 
     # Load data
@@ -322,10 +360,46 @@ def return_model_residual(image: np.ndarray, model: np.ndarray, rms: np.ndarray 
     
     return residual
 
-
 # ------------------------------------------------
 # Return estimators from fitter objects/posteriors
 # ------------------------------------------------
+def return_chains_summary_from_fitter(fitter, band_config_dict, rkey, method):
+
+    # Sample posterior
+    rkey, rkey_est = jax.random.split(rkey, 2)
+    if method == "mcmc":
+        # mcmc sampling
+        fitter.sample(rkey=rkey_est)
+        results = fitter.sampling_results
+    elif method == "svi-flow":
+        # svi
+        results = fitter.estimate_posterior(method=method, rkey=rkey_est)
+
+    # Create chains dict
+    chain_dict = {}
+    chains = results.get_chains()
+    filters = return_filters(band_config_dict)
+
+    # constant parameters
+    for params in fitter.const_params:
+        chain_dict[params] = chains[params].values
+
+    # linked parameters
+    for param in fitter.linked_params:
+       for filter in filters:
+           chain_dict[f"{param}_{filter}"] = chains[f"{param}_{filter}"].values
+           chain_dict[f"{param}_at_wv"] = chains[f"{param}_at_wv"].values
+
+    # unlinked params
+    for param in fitter.unlinked_params:
+        chain_dict[f"{param}_{filter}"] = chains[f"{param}_{filter}"].values
+
+    # Create summary
+    summary = results.retrieve_med_std()
+
+    return chain_dict, summary
+
+
 def return_MAP_from_fitter(fitter, rkey):
 
     # Find MAP
@@ -336,19 +410,3 @@ def return_MAP_from_fitter(fitter, rkey):
     map = {key : np.asarray(val) for key, val in map.items()}
 
     return map
-
-
-def return_summary_from_fitter(fitter, rkey, method):
-
-    rkey, rkey_est = jax.random.split(rkey, 2)
-    # -- MCMC sampling
-    if method == "mcmc":
-        fitter.sample(rkey=rkey_est)
-        results = fitter.sampling_results
-    # -- SVI
-    elif method == "svi-flow":
-        results = fitter.estimate_posterior(method=method, rkey=rkey_est)
-
-    summary = results.retrieve_med_std()
-
-    return summary
