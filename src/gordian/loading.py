@@ -7,7 +7,7 @@ from astropy.io import fits
 from .config import BandConfig, CubeConfig
 
 
-def _resolve_path(*, file_path: Optional[str] = None, file_dir: Optional[str] = None, file_name: Optional[str] = None):
+def resolve_path(*, file_path: Optional[str] = None, file_dir: Optional[str] = None, file_name: Optional[str] = None):
     """
     Resolves a file path. Either verify an existing file path, or construct a path from a directory and file name.
     """
@@ -19,7 +19,7 @@ def _resolve_path(*, file_path: Optional[str] = None, file_dir: Optional[str] = 
         else:
             raise FileNotFoundError(f"The following file path does not exist: {file_path}")
         
-    # If file_dir and file_name supplied, check combination is correct
+    # If file_dir and file_name supplied, check combination is corret
     elif file_dir is not None and file_name is not None:
         file_path = os.path.join(file_dir, file_name)
         if os.path.exists(file_path):
@@ -30,16 +30,23 @@ def _resolve_path(*, file_path: Optional[str] = None, file_dir: Optional[str] = 
         raise Exception("Either file_path or file_dir and file_name must be provided")
 
 
-def _rebuild_wave_from_header(header):
+def rebuild_wave_from_header(header):
+
     try:
-        wave = np.arange(header["CRVAL3"], header["CRVAL3"] + (header["NAXIS3"] - 1) * header["CDELT3"], header["CDELT3"])
+        crval = header["CRVAL3"]
+        cdelt = header["CDELT3"]
+        naxis = header["NAXIS3"]
+
+        pix = np.arange(naxis)
+        wave = crval + pix * cdelt
+
     except Exception as e:
         return e
     
     return wave
 
 
-def _extract_subregion(data, centre: Tuple[int, int], height: int, width: int, n_pad: int = 0) -> np.ndarray:
+def extract_subregion(data, centre: Tuple[int, int], height: int, width: int, n_pad: int = 0) -> np.ndarray:
 
     # Check padding size
     if 2 * n_pad >= height or 2 * n_pad >= width:
@@ -65,7 +72,6 @@ def _extract_subregion(data, centre: Tuple[int, int], height: int, width: int, n
         return data[y0:y1, x0:x1]
     # -- cube
     elif data.ndim == 3:
-        # (nlam, ny, nx) or maybe (nz, ny, nx)
         ny, nx = data.shape[1], data.shape[2]
         if y0 < 0 or x0 < 0 or y1 > ny or x1 > nx:
             raise IndexError("Requested subregion extends outside data array")
@@ -73,7 +79,7 @@ def _extract_subregion(data, centre: Tuple[int, int], height: int, width: int, n
     else:
         raise ValueError("Input data must be 2D or 3D")
 
-def _normalise(data):
+def normalise(data):
 
     if data.ndim == 2:
         data /= np.nansum(data)
@@ -107,7 +113,7 @@ def load_band_data(band_config: BandConfig):
     """
 
     # Load image data
-    data_path = _resolve_path(file_dir=band_config.data_dir, file_name=band_config.data_name)
+    data_path = resolve_path(file_dir=band_config.data_dir, file_name=band_config.data_name)
     image = fits.getdata(data_path, extname=band_config.data_ext)
     wht = fits.getdata(data_path, extname="WHT")
     
@@ -120,25 +126,25 @@ def load_band_data(band_config: BandConfig):
 
     # Only extract subregion if centre, width, height provided
     if band_config.centre is not None and band_config.width is not None and band_config.height is not None:
-        image = _extract_subregion(image, band_config.centre, band_config.height, band_config.width)
-        sig = _extract_subregion(sig, band_config.centre, band_config.height, band_config.width)
-        wht = _extract_subregion(wht, band_config.centre, band_config.height, band_config.width)
-        mask = _extract_subregion(mask, band_config.centre, band_config.height, band_config.width)
+        image = extract_subregion(image, band_config.centre, band_config.height, band_config.width)
+        sig = extract_subregion(sig, band_config.centre, band_config.height, band_config.width)
+        wht = extract_subregion(wht, band_config.centre, band_config.height, band_config.width)
+        mask = extract_subregion(mask, band_config.centre, band_config.height, band_config.width)
 
     # Load PSF data
     psf = None
     if band_config.psf_dir is not None and band_config.psf_name is not None:
-        psf_path = _resolve_path(file_dir=band_config.psf_dir, file_name=band_config.psf_name)
+        psf_path = resolve_path(file_dir=band_config.psf_dir, file_name=band_config.psf_name)
         psf = fits.getdata(psf_path, extname=band_config.psf_ext if band_config.psf_ext is not None else "PRIMARY")
         
         # extract subregion
         if band_config.width is not None and band_config.height is not None:
             psf_ny, psf_nx = psf.shape
             psf_centre = (int(psf_ny // 2), int(psf_nx // 2))
-            psf = _extract_subregion(psf, psf_centre, band_config.height, band_config.width, n_pad=2)
+            psf = extract_subregion(psf, psf_centre, band_config.height, band_config.width, n_pad=2)
         
         # normalize along each spectral axis
-        psf = _normalise(psf)
+        psf = normalise(psf)
 
     return image, mask, sig, psf
 
@@ -163,10 +169,10 @@ def load_cube_data(cube_config: CubeConfig):
     """
 
     # Load cube data
-    data_path = _resolve_path(file_dir=cube_config.data_dir, file_name=cube_config.data_name)
+    data_path = resolve_path(file_dir=cube_config.data_dir, file_name=cube_config.data_name)
     if cube_config.wave_from_hdr:
         _, wave_hdr = fits.getdata(data_path, extname=cube_config.data_ext, header=True)
-        wave = _rebuild_wave_from_header(wave_hdr)
+        wave = rebuild_wave_from_header(wave_hdr)
     cube = fits.getdata(data_path, extname=cube_config.data_ext)
     err = fits.getdata(data_path, extname="ERR")
 
@@ -175,23 +181,23 @@ def load_cube_data(cube_config: CubeConfig):
 
     # Extract subregion
     if cube_config.centre is not None and cube_config.width is not None and cube_config.height is not None:
-        cube = _extract_subregion(cube, cube_config.centre, cube_config.height, cube_config.width)
-        err = _extract_subregion(err, cube_config.centre, cube_config.height, cube_config.width)
+        cube = extract_subregion(cube, cube_config.centre, cube_config.height, cube_config.width)
+        err = extract_subregion(err, cube_config.centre, cube_config.height, cube_config.width)
 
     # Load PSF data if provided
     psf = None
     if cube_config.psf_dir is not None and cube_config.psf_name is not None:
-        psf_path = _resolve_path(file_dir=cube_config.psf_dir, file_name=cube_config.psf_name)
+        psf_path = resolve_path(file_dir=cube_config.psf_dir, file_name=cube_config.psf_name)
         psf = fits.getdata(psf_path, extname=cube_config.psf_ext if cube_config.psf_ext is not None else "PRIMARY")
         
         # extract subregion
         if cube_config.height is not None and cube_config.width is not None:
             psf_ny, psf_nx = psf.shape
             psf_centre = int(0.5*psf_ny), int(0.5*psf_nx)
-            psf = _extract_subregion(psf, psf_centre, cube_config.height, cube_config.width, n_pad=2, data_type="cube")
+            psf = extract_subregion(psf, psf_centre, cube_config.height, cube_config.width, n_pad=2)
         
         # normalise along each spectral axis
-        psf = _normalise(psf, data_type="cube")
+        psf = normalise(psf)
 
     # Crop wavelength axis
     if cube_config.wave_min is not None and cube_config.wave_max is not None:
