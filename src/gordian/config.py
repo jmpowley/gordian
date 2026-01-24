@@ -27,13 +27,13 @@ class CubeConfig:
     data_name: str
     data_ext: str
     wave_from_hdr: bool
-    in_wave_units: Optional[str]
-    out_wave_units: Optional[str]
-    centre: Tuple[int, int]
-    width: int
-    height: int
-    wave_min: Optional[float]
-    wave_max: Optional[float]
+    in_wave_units: Optional[str] = None
+    out_wave_units: Optional[str] = None
+    centre: Optional[Tuple[int, int]] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    wave_min: Optional[float] = None
+    wave_max: Optional[float] = None
     psf_dir: Optional[str] = None
     psf_name: Optional[str] = None
     psf_ext: Optional[str] = None
