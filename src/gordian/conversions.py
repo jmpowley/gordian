@@ -1,23 +1,12 @@
 import numpy as np
 import astropy.units as u
 
-# -------------------
-# Define custom units
-# -------------------
-def return_si_flux_unit():
-    """SI flux density unit: W/m^3"""
-    return u.W / u.m**3
-
-def return_cgs_flux_unit():
-    """CGS flux density unit: erg/s/cm^2/Angstrom"""
-    return u.erg / (u.s * u.cm**2 * u.AA)
-
-def return_maggie_flux_unit():
-    """Maggie unit: dimensionless, where 1 maggie = 3631 Jy"""
-    return u.def_unit("maggie", 3631 * u.Jy)
-
-# Define maggie unit globally for comparisons
-MAGGIE_UNIT = return_maggie_flux_unit()
+# --------------------------
+# Define constants for units
+# --------------------------
+MAGGIE_UNIT = u.def_unit("maggie", 3631 * u.Jy)
+CGS_FLUX_UNIT = u.erg / (u.s * u.cm**2 * u.AA)
+SI_FLUX_UNIT = u.W / u.m**3
 
 # -------------------
 # Conversion functions
