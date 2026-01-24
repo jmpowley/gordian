@@ -1,529 +1,294 @@
 import numpy as np
-
 import astropy.units as u
 
 # -------------------
-# General conversions
+# Define custom units
 # -------------------
-def convert_wave(wave_in, in_wave_units, out_wave_units):
+def return_si_flux_unit():
+    """SI flux density unit: W/m^3"""
+    return u.W / u.m**3
 
-    # Convert wavelength units
-    # -- from SI
-    if in_wave_units == "si":
-        # -- no conversion
-        if out_wave_units == "si":
-            wave_out = wave_in
-        # -- to microns
-        elif out_wave_units == "um":
-            wave_out = convert_wave_m_to_um(wave_in)
-        # -- to Angstroms
-        elif out_wave_units == "A":
-            wave_out = convert_wave_m_to_A(wave_in)
-        else:
-            raise ValueError(f'Output wave unit ({out_wave_units}) not recognised')
-    # -- from microns
-    elif in_wave_units == "um":
-        # -- no conversion
-        if out_wave_units == "um":
-            wave_out = wave_in
-        # -- to angstroms
-        elif out_wave_units == "A":
-            wave_out = convert_wave_um_to_A(wave_in)
-        else:
-            raise ValueError(f'Output wave unit ({out_wave_units}) not recognised')
-    else:
-        raise ValueError(f'Input wave unit ({in_wave_units}) not recognised')
+def return_cgs_flux_unit():
+    """CGS flux density unit: erg/s/cm^2/Angstrom"""
+    return u.erg / (u.s * u.cm**2 * u.AA)
+
+def return_maggie_flux_unit():
+    """Maggie unit: dimensionless, where 1 maggie = 3631 Jy"""
+    return u.def_unit("maggie", 3631 * u.Jy)
+
+# Define maggie unit globally for comparisons
+MAGGIE_UNIT = return_maggie_flux_unit()
+
+# -------------------
+# Conversion functions
+# -------------------
+def convert_wave(wave_in, in_unit, out_unit, return_quantity=False):
+    """Convert wavelength between units
     
-    return wave_out
+    Parameters
+    ----------
+    wave_in : float or array
+        Input wavelength values
+    in_unit : Unit
+        Input wavelength unit
+    out_unit : Unit
+        Output wavelength unit
+    return_quantity : bool
+        Return as astropy Quantity (default: False)
+    
+    Returns
+    -------
+    wave_out : float, array, or Quantity
+        Converted wavelength
+    """
+    
+    # Assign units
+    if not isinstance(wave_in, u.Quantity):
+        wave_in = wave_in * in_unit
+    
+    # Apply conversion
+    try:
+        wave_out = wave_in.to(out_unit)
+    except Exception as e:
+        raise ValueError(f"Error converting wavelength from {in_unit} to {out_unit}: {e}")
 
-def convert_flux(flux_in, err_in, in_flux_units, out_flux_units, wave_in=None, in_wave_units=None):
-
-    # Convert wavelengths for flux density calculations
-    # -- no conversion
-    if in_wave_units == "si":
-        wave_m = wave_in
-    # -- from microns
-    elif in_wave_units == "um":
-        wave_m = convert_wave_um_to_m(wave_in)
-    # -- from Angstroms
-    elif in_wave_units == "A":
-        wave_m = convert_wave_A_to_m(wave_in)
+    # Return units
+    if return_quantity:
+        return wave_out
     else:
-        raise ValueError(f'Input wave unit ({in_wave_units}) not recognised')
+        return wave_out.value
 
-    # Convert flux units
-    # -- from magnitudes
-    if in_flux_units == "magnitude":
-        # -- no conversion
-        if out_flux_units == in_flux_units:
-            flux_out, err_out = flux_in, err_in
-        # -- to maggies
-        elif out_flux_units == "maggie":
-            flux_out, err_out = convert_flux_magnitude_to_maggie(flux_in, err_in)
-        # -- to microjanskies
-        elif out_flux_units == "ujy":
-            flux_maggie, err_maggie = convert_flux_magnitude_to_maggie(flux_in, err_in)
-            flux_jy, err_jy = convert_flux_maggie_to_jy(flux_maggie, err_maggie)
-            flux_out, err_out = convert_flux_jy_to_ujy(flux_jy, err_jy)
-        # -- to CGS units
-        elif out_flux_units == "cgs":
-            flux_maggie, err_maggie = convert_flux_magnitude_to_maggie(flux_in, err_in)
-            wave_m = convert_wave_um_to_m(wave_in)  # assumes wavelength given in microns
-            flux_out, err_out = convert_flux_maggie_to_cgs(flux_maggie, err_maggie, wave_m, cgs_factor=1e-19)
-        else:
-            raise ValueError(f'Output flux unit ({out_flux_units}) not recognised')
-    # -- from SI
-    if in_flux_units == "si":
-        # -- no conversion
-        if out_flux_units == in_flux_units:
-            flux_out, err_out = flux_in, err_in
-        # -- to CGS units
-        if out_flux_units == "cgs":
-            flux_out, err_out = convert_flux_si_to_cgs(flux_in, err_in, cgs_factor=1e-19)
-        # -- to microjanskies
-        elif out_flux_units == "ujy":
-            wave_m = wave_in
-            flux_jy, err_jy = convert_flux_si_to_jy(wave_m, flux_in, err_in)
-            flux_out, err_out = convert_flux_jy_to_ujy(flux_jy, err_jy)
-        # -- to maggies
-        elif out_flux_units == "maggie":
-            flux_out, err_out = convert_flux_si_to_maggie(wave_m, flux_in, err_in)
-        else:
-            raise ValueError(f'Output flux unit ({out_flux_units}) not recognised')
-    # -- from uJy
-    elif in_flux_units == "ujy":
-        # -- no conversion
-        if out_flux_units == in_flux_units:
-            flux_out, err_out = flux_in, err_in
-        # -- to CGS
-        if out_flux_units == "cgs":
-            flux_jy, err_jy = convert_flux_ujy_to_jy(flux_in, err_in)
-            flux_out, err_out = convert_flux_jy_to_cgs(wave_m, flux_jy, err_jy, cgs_factor=1e-19)
-        else:
-            raise ValueError(f'Output flux unit ({out_flux_units}) not recognised')
-    # -- incorrect input unit
+
+def convert_flux(flux_in, in_unit, out_unit, err_in=None, wave=None, return_quantity=False):
+    """Convert flux and optional error between different units
+    
+    Handles special cases:
+    - Spectral density conversions (requires wavelength)
+    - Magnitude conversions (logarithmic transformation)
+    - Maggie conversions (dimensionless flux unit)
+    
+    Parameters
+    ----------
+    flux_in : float or array or Quantity
+        Input flux values
+    in_unit : Unit
+        Input flux unit
+    out_unit : Unit
+        Output flux unit
+    err_in : float or array or Quantity, optional
+        Input flux error/uncertainty
+    wave : Quantity, optional
+        Wavelength (required for spectral density conversions)
+    return_quantity : bool
+        Return as astropy Quantity (default: False)
+    
+    Returns
+    -------
+    flux_out : float, array, or Quantity
+        Converted flux values
+    err_out : float, array, or Quantity or None
+        Converted flux error (None if err_in was None)
+    """
+    
+    # Assign units to flux
+    if not isinstance(flux_in, u.Quantity):
+        flux_in = flux_in * in_unit
+    
+    # Assign units to error
+    if err_in is not None and not isinstance(err_in, u.Quantity):
+        err_in = err_in * in_unit
+    
+    # Converting from magnitudes
+    if in_unit == u.mag:
+        flux_out, err_out = convert_flux_from_magnitudes(flux_in, out_unit, err_in=err_in, wave=wave)
+
+    # Converting to magnitudes
+    elif out_unit == u.mag:
+        flux_out, err_out = convert_flux_to_magnitudes(flux_in, in_unit, err_in=err_in, wave=wave)
+    
+    # Standard conversion
     else:
-        raise ValueError(f'Input flux unit ({in_flux_units}) not recognised')
+        flux_out, err_out = convert_flux_standard(flux_in, in_unit, out_unit, err_in=err_in, wave=wave)
+    
+    # Return results (always return both flux and error)
+    if return_quantity:
+        return flux_out, err_out
+    else:
+        return flux_out.value, (None if err_out is None else err_out.value)
+
+
+def convert_flux_from_magnitudes(flux_in, out_unit, err_in=None, wave=None):
+    """Convert from magnitude to other flux units
+    
+    Parameters
+    ----------
+    flux_in : Quantity
+        Flux in magnitudes
+    out_unit : Unit
+        Target flux unit
+    err_in : Quantity, optional
+        Flux error in magnitudes
+    wave : Quantity, optional
+        Wavelength (required for spectral density conversions)
+    
+    Returns
+    -------
+    flux_out : Quantity
+        Converted flux
+    err_out : Quantity or None
+        Converted error (None if err_in was None)
+    """
+    
+    # Convert Magnitude to maggie
+    flux_maggie = 10.0 ** (-0.4 * flux_in.value)
+    if err_in is not None:
+        # Error propagation: dF/F ≈ 0.921 * dm
+        factor = 0.4 * np.log(10.0)
+        err_maggie = np.abs(flux_maggie * factor * err_in.value)
+    else:
+        err_maggie = None
+    
+    # Convert maggie to target unit
+    if out_unit == u.mag:
+        # mag → mag (no conversion)
+        flux_out = flux_in
+        err_out = err_in
+    else:
+        flux_maggie_qty = flux_maggie * u.dimensionless_unscaled
+        if err_maggie is not None:
+            err_maggie_qty = err_maggie * u.dimensionless_unscaled
+        else:
+            err_maggie_qty = None
+        
+        # Convert to Jy first
+        flux_jy = flux_maggie_qty * 3631 * u.Jy
+        if err_maggie_qty is not None:
+            err_jy = err_maggie_qty * 3631 * u.Jy
+        else:
+            err_jy = None
+        
+        # Convert Jy to target unit
+        if out_unit == u.Jy:
+            flux_out = flux_jy
+            err_out = err_jy
+        elif out_unit == MAGGIE_UNIT:
+            flux_out = flux_jy / 3631
+            err_out = err_jy / 3631 if err_jy is not None else None
+        else:
+            # Spectral density conversion (requires wavelength)
+            if wave is None:
+                raise ValueError(f"Wavelength required for conversion from magnitude to {out_unit}")
+            flux_out = flux_jy.to(out_unit, equivalencies=u.spectral_density(wave))
+            if err_jy is not None:
+                err_out = err_jy.to(out_unit, equivalencies=u.spectral_density(wave))
+            else:
+                err_out = None
 
     return flux_out, err_out
 
-# ----------------------
-# Wavelength conversions
-# ----------------------
-def convert_wave_m_to_um(wave_m, return_quantity=False, return_unit=False):
-    """Convert wavelength values from meters to microns"""
 
-    # Assign units
-    if not isinstance(wave_m, u.Quantity):
-        wave_m = wave_m * u.m
-
-    # Convert wavelength to microns
-    wave_um = wave_m.to(u.um)
-    wave_unit = u.um
-
-    # Optionally return unit and quantity 
-    if return_unit:
-        if return_quantity:
-            return wave_um, wave_unit
-        else:
-            return wave_um.value, wave_unit
-    else:
-        return wave_um if return_quantity else wave_um.value
+def convert_flux_to_magnitudes(flux_in, in_unit, err_in=None, wave=None):
+    """Convert from other flux units to magnitude
     
-def convert_wave_um_to_m(wave_um, return_quantity=False, return_unit=False):
-    """Convert wavelength values from microns to metres"""
-
-    # Assign units
-    if not isinstance(wave_um, u.Quantity):
-        wave_um = wave_um * u.um
-
-    # Convert wavelength to metres
-    wave_m = wave_um.to(u.m)
-    wave_unit = u.m
-
-    # Optionally return unit and quantity 
-    if return_unit:
-        if return_quantity:
-            return wave_m, wave_unit
-        else:
-            return wave_m.value, wave_unit
-    else:
-        return wave_m if return_quantity else wave_m.value
-
-def convert_wave_A_to_um(wave_A, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(wave_A, u.Quantity):
-        wave_A = wave_A * u.AA
-
-    # Convert wavelength to microns
-    wave_um = wave_A.to(u.um)
-    wave_unit = u.um
-
-    # Optionally return unit and quantity 
-    if return_unit:
-        if return_quantity:
-            return wave_um, wave_unit
-        else:
-            return wave_um.value, wave_unit
-    else:
-        return wave_um if return_quantity else wave_um.value
+    Parameters
+    ----------
+    flux_in : Quantity
+        Input flux
+    in_unit : Unit
+        Input flux unit
+    err_in : Quantity, optional
+        Flux error
+    wave : Quantity, optional
+        Wavelength (required for spectral density conversions)
     
-def convert_wave_um_to_A(wave_um, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(wave_um, u.Quantity):
-        wave_um = wave_um * u.um
-
-    # Convert wavelength to metres
-    wave_A = wave_um.to(u.AA)
-    wave_unit = u.AA
-
-    # Optionally return unit and quantity 
-    if return_unit:
-        if return_quantity:
-            return wave_A, wave_unit
-        else:
-            return wave_A.value, wave_unit
-    else:
-        return wave_A if return_quantity else wave_A.value
-    
-def convert_wave_m_to_A(wave_m, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(wave_m, u.Quantity):
-        wave_m = wave_m * u.m
-
-    # Convert wavelength to metres
-    wave_A = wave_m.to(u.AA)
-    wave_unit = u.AA
-
-    # Optionally return unit and quantity 
-    if return_unit:
-        if return_quantity:
-            return wave_A, wave_unit
-        else:
-            return wave_A.value, wave_unit
-    else:
-        return wave_A if return_quantity else wave_A.value
-    
-def convert_wave_A_to_m(wave_A, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(wave_A, u.Quantity):
-        wave_A = wave_A * u.AA
-
-    # Convert wavelength to metres
-    wave_m = wave_A.to(u.m)
-    wave_unit = u.m
-
-    # Optionally return unit and quantity 
-    if return_unit:
-        if return_quantity:
-            return wave_m, wave_unit
-        else:
-            return wave_m.value, wave_unit
-    else:
-        return wave_m if return_quantity else wave_m.value
-
-# -----------------------------
-# Flux/flux density conversions
-# -----------------------------
-def convert_flux_jy_to_ujy(flux_jy, err_jy, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(flux_jy, u.Quantity):
-        flux_jy = flux_jy * u.Jy
-    if not isinstance(err_jy, u.Quantity) and err_jy is not None:
-        err_jy = err_jy * u.Jy
-
-    # convert to microjanskies
-    flux_ujy = flux_jy.to(u.uJy)
-    if err_jy is not None:
-        err_ujy = err_jy.to(u.uJy)
-    else:
-        err_ujy = None
-    flux_unit = u.uJy
-
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_ujy, err_ujy, flux_unit
-        else:
-            return flux_ujy.value, None if err_ujy is None else err_ujy.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_ujy, err_ujy
-        else:
-            return flux_ujy.value, None if err_ujy is None else err_ujy.value
-    
-def convert_flux_ujy_to_jy(flux_ujy, err_ujy, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(flux_ujy, u.Quantity):
-        flux_ujy = flux_ujy * u.uJy
-    if not isinstance(err_ujy, u.Quantity) and err_ujy is not None:
-        err_ujy = err_ujy * u.uJy
-
-    # convert to jansky
-    flux_jy = flux_ujy.to(u.Jy)
-    if err_ujy is not None:
-        err_jy = err_ujy.to(u.Jy)
-    else:
-        err_jy = None
-    flux_unit = u.Jy
-
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_jy, err_jy, flux_unit
-        else:
-            return flux_jy.value, None if err_jy is None else err_jy.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_jy, err_jy
-        else:
-            return flux_jy.value, None if err_jy is None else err_jy.value
-
-def convert_flux_si_to_jy(wave_m, flux_si, err_si, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(wave_m, u.Quantity):
-        wave_m = wave_m * u.m
-    if not isinstance(flux_si, u.Quantity):
-        flux_si = flux_si * u.Unit('W / m3')
-    if not isinstance(err_si, u.Quantity) and err_si is not None:
-        err_si = err_si * u.Unit('W / m3')
-
-    # convert to janskies
-    flux_unit = u.Jy
-    flux_jy = flux_si.to(flux_unit, equivalencies=u.spectral_density(wave_m))
-    if err_si is not None:
-        err_jy = err_si.to(flux_unit, equivalencies=u.spectral_density(wave_m))
-    else:
-        err_jy = None
-
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_jy, err_jy, flux_unit
-        else:
-            return flux_jy.value, None if err_jy is None else err_jy.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_jy, err_jy
-        else:
-            return flux_jy.value, None if err_jy is None else err_jy.value
-
-def convert_flux_jy_to_cgs(wave_m, flux_jy, err_jy, cgs_factor=1.0, return_quantity=False, return_unit=False):
-    """Convert flux values from janksies to cgs units
-
-    Optionally, supply `cgs_factor` to scale orders of magnitude or return result as `astropy.units.quantity.Quantity` object
+    Returns
+    -------
+    flux_out : Quantity
+        Flux in magnitudes
+    err_out : Quantity or None
+        Error in magnitudes (None if err_in was None)
     """
 
-    # Assign units
-    if not isinstance(wave_m, u.Quantity):
-        wave_m = wave_m * u.m
-    if not isinstance(flux_jy, u.Quantity):
-        flux_jy = flux_jy * u.Jy
-    if not isinstance(err_jy, u.Quantity) and err_jy is not None:
-        err_jy = err_jy * u.Jy
-
-    # convert to cgs units
-    flux_unit = u.erg/(u.s * u.cm**2 * u.AA) * cgs_factor
-    flux_cgs = flux_jy.to(flux_unit, equivalencies=u.spectral_density(wave_m))
-    if err_jy is not None:
-        err_cgs = err_jy.to(flux_unit, equivalencies=u.spectral_density(wave_m))
+    # Convert to Jy first
+    if in_unit == u.Jy:
+        flux_jy = flux_in
+        err_jy = err_in
+    elif in_unit == MAGGIE_UNIT:
+        flux_jy = flux_in * 3631 * u.Jy
+        err_jy = err_in * 3631 * u.Jy if err_in is not None else None
     else:
-        err_cgs = None
-
-    if return_unit:
-        if return_quantity:
-            return flux_cgs, err_cgs, flux_unit
+        # Spectral density conversion (requires wavelength)
+        if wave is None:
+            raise ValueError(f"Wavelength required for conversion from {in_unit} to magnitude")
+        flux_jy = flux_in.to(u.Jy, equivalencies=u.spectral_density(wave))
+        if err_in is not None:
+            err_jy = err_in.to(u.Jy, equivalencies=u.spectral_density(wave))
         else:
-            return flux_cgs.value, None if err_cgs is None else err_cgs.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_cgs, err_cgs
-        else:
-            return flux_cgs.value, None if err_cgs is None else err_cgs.value
-
-def convert_flux_si_to_cgs(flux_si, err_si, cgs_factor, return_quantity=False, return_unit=False):
-    """Convert flux values from janksies to cgs units
-
-    Optionally, supply `cgs_factor` to scale orders of magnitude or return result as `astropy.units.quantity.Quantity` object
-    """
-
-    # Assign units
-    if not isinstance(flux_si, u.Quantity):
-        flux_si = flux_si * u.Unit('W / m3')
-    if not isinstance(err_si, u.Quantity) and err_si is not None:
-        err_si = err_si * u.Unit('W / m3')
-
-    # convert to cgs units
-    flux_unit = u.erg/(u.s * u.cm**2 * u.AA) * cgs_factor
-    flux_cgs = flux_si.to(flux_unit)
-    if err_si is not None:
-        err_cgs = err_si.to(flux_unit)
-    else:
-        err_cgs = None
-
-    if return_unit:
-        if return_quantity:
-            return flux_cgs, err_cgs, flux_unit
-        else:
-            return flux_cgs.value, None if err_cgs is None else err_cgs.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_cgs, err_cgs
-        else:
-            return flux_cgs.value, None if err_cgs is None else err_cgs.value
-
-def convert_flux_magnitude_to_maggie(flux_mag, err_mag, return_quantity=False, return_unit=False):
-    """ Convert flux from magnitudes to maggies"""
-
-    # Assign units
-    if not isinstance(flux_mag, u.Quantity):
-        flux_mag = flux_mag * u.mag
-    if not isinstance(err_mag, u.Quantity) and err_mag is not None:
-        err_mag = err_mag * u.mag
-
-    # Convert to maggies
-    flux_unit = u.dimensionless_unscaled
-    flux_maggie = (10.0 ** (-0.4 * flux_mag.value)) * flux_unit
+            err_jy = None
     
-    # Only propagate error if provided
-    if err_mag is not None:
-        factor = 0.4 * np.log(10.0)
-        err_maggie = np.abs(flux_maggie.value * factor * err_mag.value) * flux_unit
-    else:
-        err_maggie = None
-
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_maggie, err_maggie, flux_unit
-        else:
-            return flux_maggie.value, None if err_maggie is None else err_maggie.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_maggie, err_maggie
-        else:
-            return flux_maggie.value, None if err_maggie is None else err_maggie.value
-        
-def convert_flux_maggie_to_jy(flux_maggie, err_maggie, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(flux_maggie, u.Quantity):
-        flux_maggie = flux_maggie * u.dimensionless_unscaled
-    if not isinstance(err_maggie, u.Quantity) and err_maggie is not None:
-        err_maggie = err_maggie * u.dimensionless_unscaled
-
-    # Convert to janskies
-    flux_unit =  u.Jy
-    flux_jy = flux_maggie * 3631 * flux_unit
-    if err_maggie is not None:
-        err_jy = err_maggie * 3631 * flux_unit
-    else:
-        err_jy = None
-    
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_jy, err_jy, flux_unit
-        else:
-            return flux_jy.value, None if err_jy is None else err_jy.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_jy, err_jy
-        else:
-            return flux_jy.value, None if err_jy is None else err_jy.value
-
-def convert_flux_jy_to_maggie(flux_jy, err_jy, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(flux_jy, u.Quantity):
-        flux_jy = flux_jy * u.Jy
-    if not isinstance(err_jy, u.Quantity) and err_jy is not None:
-        err_jy = err_jy * u.Jy
-
-    # Convert to maggies
-    flux_unit =  u.dimensionless_unscaled
-    flux_maggie = flux_jy / 3631 * flux_unit
+    # Convert Jy to maggie
+    flux_maggie = flux_jy / 3631
     if err_jy is not None:
-        err_maggie = err_jy / 3631 * flux_unit
+        err_maggie = err_jy / 3631
     else:
         err_maggie = None
     
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_maggie, err_maggie, flux_unit
-        else:
-            return flux_maggie.value, None if err_maggie is None else err_maggie.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_maggie, err_maggie
-        else:
-            return flux_maggie.value, None if err_maggie is None else err_maggie.value
-        
-def convert_flux_maggie_to_cgs(flux_maggie, err_maggie, wave_m, cgs_factor, return_quantity=False, return_unit=False):
-
-    # Assign units
-    if not isinstance(flux_maggie, u.Quantity):
-        flux_maggie = flux_maggie * u.dimensionless_unscaled
-    if not isinstance(err_maggie, u.Quantity) and err_maggie is not None:
-        err_maggie = err_maggie * u.dimensionless_unscaled
-
-    # Convert to janskies
-    flux_unit =  u.Jy
-    flux_jy = flux_maggie * 3631 * flux_unit
+    # Convert maggie to magnitude
+    flux_mag = -2.5 * np.log10(flux_maggie.value)
     if err_maggie is not None:
-        err_jy = err_maggie * 3631 * flux_unit
+        # Error propagation: dm ≈ 1.086 * dF/F
+        err_mag = 2.5 / np.log(10.0) * err_maggie.value / flux_maggie.value
     else:
-        err_jy = None
-
-    # Convert to cgs units
-    flux_unit = u.erg/(u.s * u.cm**2 * u.AA) * cgs_factor
-    flux_cgs, err_cgs = convert_flux_jy_to_cgs(wave_m, flux_jy, err_jy, cgs_factor, return_quantity=True)
+        err_mag = None
     
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_cgs, err_cgs, flux_unit
-        else:
-            return flux_cgs.value, None if err_cgs is None else err_cgs.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_cgs, err_cgs
-        else:
-            return flux_cgs.value, None if err_cgs is None else err_cgs.value
-        
-def convert_flux_si_to_maggie(wave_m, flux_si, err_si, return_quantity=False, return_unit=False):
+    flux_out = flux_mag * u.mag
+    err_out = err_mag * u.mag if err_mag is not None else None
 
-    # Assign units
-    if not isinstance(wave_m, u.Quantity):
-        wave_m = wave_m * u.m
-    if not isinstance(flux_si, u.Quantity):
-        flux_si = flux_si * u.Unit('W / m3')
-    if not isinstance(err_si, u.Quantity) and err_si is not None:
-        err_si = err_si * u.Unit('W / m3')
+    return flux_out, err_out
 
-    # First convert si to jy
-    flux_jy, err_jy = convert_flux_si_to_jy(wave_m, flux_si, err_si, return_quantity=True)
 
-    # Convert jy to maggie
-    flux_unit = u.dimensionless_unscaled
-    flux_maggie, err_maggie = convert_flux_jy_to_maggie(flux_jy, err_jy, return_quantity=True)
+def convert_flux_standard(flux_in, in_unit, out_unit, err_in=None, wave=None):
+    """Standard flux conversion (no magnitudes involved)
+    
+    Parameters
+    ----------
+    flux_in : Quantity
+        Input flux
+    in_unit : Unit
+        Input flux unit
+    out_unit : Unit
+        Output flux unit
+    err_in : Quantity, optional
+        Flux error
+    wave : Quantity, optional
+        Wavelength (required for spectral density conversions)
+    
+    Returns
+    -------
+    flux_out : Quantity
+        Converted flux
+    err_out : Quantity or None
+        Converted error (None if err_in was None)
+    """
 
-    # Optionally return quantity and unit
-    if return_unit:
-        if return_quantity:
-            return flux_maggie, err_maggie, flux_unit
+    try:
+        # Try simple conversion first
+        flux_out = flux_in.to(out_unit)
+        if err_in is not None:
+            err_out = err_in.to(out_unit)
         else:
-            return flux_maggie.value, None if err_maggie is None else err_maggie.value, flux_unit
-    else:
-        if return_quantity:
-            return flux_maggie, err_maggie
+            err_out = None
+    except Exception:
+        # Try spectral density conversion
+        if wave is None:
+            raise ValueError(
+                f"Conversion from {in_unit} to {out_unit} failed. "
+                f"If this is a spectral-density conversion, you must supply wavelength."
+            )
+        flux_out = flux_in.to(out_unit, equivalencies=u.spectral_density(wave))
+        if err_in is not None:
+            err_out = err_in.to(out_unit, equivalencies=u.spectral_density(wave))
         else:
-            return flux_maggie.value, None if err_maggie is None else err_maggie.value
+            err_out = None
+
+    return flux_out, err_out
