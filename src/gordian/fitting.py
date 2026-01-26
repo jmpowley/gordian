@@ -10,6 +10,8 @@ import jax
 import jax.numpy as jnp
 from jax.random import PRNGKey
 
+import numpyro.distributions as dist
+
 from pysersic import FitSingle
 from pysersic.multiband import FitMultiBandPoly, FitMultiBandBSpline
 from pysersic.priors import autoprior, PySersicSourcePrior
@@ -22,8 +24,8 @@ from .writing import save_individual_fit_result, save_simultaneous_fit_results
 from .helpers import (
     return_linked_param_at_wv, 
     return_const_param, 
-    return_MAP_from_fitter, 
-    return_summary_from_fitter
+    return_MAP_from_fitter,
+    return_chains_summary_from_fitter,
 )
 
 
@@ -55,14 +57,21 @@ def set_priors(image: np.ndarray, mask: np.ndarray, model_config: ModelConfig):
 
     # Set priors from config dict
     for prior_type, prior_type_dict in model_config.prior_dict.items():
+
         if prior_type == "uniform":
             for param, range in prior_type_dict.items():
                 lo, hi = range
                 prior.set_uniform_prior(param, lo, hi)
+
         if prior_type == "gaussian":
             for param, gauss in prior_type_dict.items():
                 loc, std = gauss
                 prior.set_gaussian_prior(param, loc, std)
+
+        if prior_type == "fixed":
+            for param, value in prior_type_dict.items():
+                print(param, value)
+                prior.set_custom_prior(param, dist.Delta(value))
 
     return prior
 
@@ -142,7 +151,7 @@ def fit_bands_independent(
     for band_name, band_config in band_config.items():
 
         filter = band_config.filter
-        if fit_config.verbose:
+        if io_config.verbose:
             print("------------------------------")
             print(f"Filter: {filter.upper()}")
 
@@ -163,7 +172,7 @@ def fit_bands_independent(
             loss_func=fit_config.loss_func, 
             method=fit_config.method, 
             rkey=rkey_fit, 
-            verbose=fit_config.verbose
+            verbose=io_config.verbose
         )
 
         # Make plots
@@ -212,7 +221,7 @@ def fit_bands_simultaneous(
         filter = band_config.filter
         sedpy_filter = load_filters(["jwst_" + filter])[0]
         
-        if fit_config.verbose:
+        if io_config.verbose:
             print("------------------------------")
             print(f"Filter: {filter.upper()}")
 
@@ -221,7 +230,7 @@ def fit_bands_simultaneous(
 
         # Create PySersic priors
         prior = set_priors(image=image, mask=mask, model_config=model_config)
-        if fit_config.verbose:
+        if io_config.verbose:
             print(prior)
 
         # Fit band
@@ -235,7 +244,7 @@ def fit_bands_simultaneous(
             loss_func=fit_config.loss_func, 
             method=fit_config.method, 
             rkey=rkey_fit, 
-            verbose=fit_config.verbose,
+            verbose=io_config.verbose,
         )
 
         # Save results
@@ -296,9 +305,11 @@ def fit_bands_simultaneous(
             wv_to_save=wv_to_save,
             **fit_config.multifitter_kwargs,
         )
-    
+
     # Add multifitter results
-    sim_results_dict["summary"] = return_summary_from_fitter(MultiFitter, rkey, fit_config.method)
+    chains, summary = return_chains_summary_from_fitter(MultiFitter, band_config_dict, rkey, fit_config.method)
+    sim_results_dict["chains"] = chains
+    sim_results_dict["summary"] = summary
     sim_results_dict["map"] = return_MAP_from_fitter(MultiFitter, rkey)
     sim_results_dict["wv_to_save"] = wv_to_save
     sim_results_dict["waveffs"] = waveffs
@@ -383,7 +394,7 @@ def fit_cube(
             loss_func=fit_config.loss_func, 
             method=fit_config.method, 
             rkey=rkey_fit, 
-            verbose=fit_config.verbose, 
+            verbose=io_config.verbose, 
         )
         
     return fitter, result
